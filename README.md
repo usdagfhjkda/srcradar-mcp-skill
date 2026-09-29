@@ -51,14 +51,47 @@ skill 内提及的所有 15 个工具、协议头、端口、字段名,都是 [`
 
 ## 快速开始
 
-**客户端侧没有 install** —— 这是一个 skill 文档仓,不需要 `git clone` 后跑 `./install.sh`。Agent 在自己运行的 LLM 上下文里加载 `SKILL.md`(或等价的 YAML frontmatter + Markdown body),按里面的约束调 15 个工具即可。
+客户端侧三步搞定:**安装 skill → 建立隧道 → 启用 MCP server**。
+
+### 1. 安装 skill
+
+将 `SKILL.md` 放到 Hermes 的 skills 目录,固定路径如下(Windows):
 
 ```text
-1. 确认 daemon 在 deploy host 的 loopback 上跑着(ssh <deploy-host> 'curl -s http://127.0.0.1:8764/health')
-2. 在客户端机上开 SSH 隧道(ssh -L 8764:127.0.0.1:8764 <deploy-host>)
-3. agent 加载本 skill(SKILL.md)
-4. agent 按 §2 参数形状调 db.read_* / manage.* / daily.* / dispatcher.* / ymicp.*
+%LOCALAPPDATA%\hermes\skills\srcradar-mcp-skill\SKILL.md
 ```
+
+即在 `%LOCALAPPDATA%\hermes\skills\` 下创建 `srcradar-mcp-skill/` 子目录,把本仓的 `SKILL.md` 放进去。Hermes 启动时会扫描该目录加载所有 skill。
+
+### 2. 建立 SSH 隧道(daemon 跨机时)
+
+如果 srcradar-mcp-server 的 daemon 与当前 agent **不在同一台机器**,需把 daemon 的 loopback 8764 转发到本机 8764:
+
+```bash
+ssh -L 8764:127.0.0.1:8764 <deploy-host>
+```
+
+`<deploy-host>` 是 srcradar 部署机在 `~/.ssh/config` 里配的别名。**若 daemon 与 agent 同机,忽略本步** —— 直接用 `127.0.0.1:8764` 即可。
+
+### 3. 启用 MCP server
+
+在 `%LOCALAPPDATA%\hermes\config.yaml` 中加入 `mcp_servers` 配置块:
+
+```yaml
+mcp_servers:
+  srcradar-mcp:
+    url: http://127.0.0.1:8764/mcp
+    trust: untrusted
+    enabled: true
+```
+
+字段说明:
+
+- `url` —— 永远指向本机 loopback(`127.0.0.1:8764/mcp`);远程 daemon 靠 SSH 隧道暴露成 loopback,不要直接写远端地址
+- `trust: untrusted` —— 所有写工具(`manage.*` / `daily.*` / `stage_*` / `dispatcher.run_confirmed`)触发 Hermes 原生审批弹窗,用户点 yes 才执行
+- `enabled: true` —— 显式启用(默认 false;若已 false,skill 不会被加载)
+
+完成后重启 Hermes,15 个工具即出现在 agent 可调用列表中。
 
 ---
 
